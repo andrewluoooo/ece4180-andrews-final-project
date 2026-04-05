@@ -1,0 +1,6 @@
+{
+    "clangd.arguments": [
+        "--compile-commands-dir=/Users/andrewluo/GT/SP26/ECE4180/final_project",
+        "--query-driver=/Users/andrewluo/.platformio/packages/toolchain-*/bin/*,/Users/andrewluo/.platformio/packages/tool-*/bin/*"
+    ]
+}
