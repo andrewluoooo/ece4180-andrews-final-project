@@ -10,6 +10,11 @@
 // Color inverse. 1 or 0 = set or reset a bit if set a colored pixel
 #define IF_INVERT_COLOR     1
 
+// 1 = flip framebuffer left-right (corrects Y-axis mirror on some flex / HAT orientations).
+#ifndef PAINT_MIRROR_X_AXIS
+#define PAINT_MIRROR_X_AXIS 0
+#endif
+
 #include "fonts.h"
 
 class Paint {

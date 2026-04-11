@@ -28,6 +28,9 @@ void Paint::Clear(int colored) {
  *          this function won't be affected by the rotate parameter.
  */
 void Paint::DrawAbsolutePixel(int x, int y, int colored) {
+#if PAINT_MIRROR_X_AXIS
+    x = this->width - 1 - x;
+#endif
     if (x < 0 || x >= this->width || y < 0 || y >= this->height) {
         return;
     }
