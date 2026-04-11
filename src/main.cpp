@@ -17,9 +17,13 @@
 #define PIN_DOWN 2
 #define PIN_RIGHT 1
 
+// Momentary button to 3V3: clears panel (active HIGH + internal pull-down).
+#define PIN_CLEAR_EPD 6
+
 enum Dir : uint8_t { DIR_NONE = 0xFF, DIR_UP = 0, DIR_CENTER, DIR_LEFT, DIR_DOWN, DIR_RIGHT };
 
 static volatile Dir gPendingDir = DIR_NONE;
+static volatile bool gClearEpdPending = false;
 
 // Ignore new navigation until this many ms after the last accepted press (post-debounce),
 // so the EPD can finish updating before the next edge is handled.
@@ -31,6 +35,8 @@ void IRAM_ATTR isrCenter() { gPendingDir = DIR_CENTER; }
 void IRAM_ATTR isrLeft() { gPendingDir = DIR_LEFT; }
 void IRAM_ATTR isrDown() { gPendingDir = DIR_DOWN; }
 void IRAM_ATTR isrRight() { gPendingDir = DIR_RIGHT; }
+
+void IRAM_ATTR isrClearEpd() { gClearEpdPending = true; }
 
 void drawStringBold(Paint &p, int x, int y, const char *s, sFONT *f, int c) {
   p.DrawStringAt(x, y, s, f, c);
@@ -214,6 +220,11 @@ static void attachFiveWayInterrupts() {
   }
 }
 
+static void attachClearEpdInterrupt() {
+  pinMode(PIN_CLEAR_EPD, INPUT_PULLDOWN);
+  attachInterrupt(digitalPinToInterrupt(PIN_CLEAR_EPD), isrClearEpd, RISING);
+}
+
 static constexpr int kImageBytes = ((EPD_WIDTH + 7) / 8) * EPD_HEIGHT;
 
 unsigned char image[kImageBytes];
@@ -256,10 +267,28 @@ void setup() {
   Serial.println("Menu: UP/DOWN, CENTER. Start Game -> play -> name -> save.");
 
   attachFiveWayInterrupts();
-  Serial.println("Five-way ISRs armed (Falling / active LOW).");
+  attachClearEpdInterrupt();
+  Serial.println("Five-way (FALL/low) + GPIO6 clear (RISING/high, pull-down).");
 }
 
 void loop() {
+  bool clearReq = false;
+  noInterrupts();
+  if (gClearEpdPending) {
+    gClearEpdPending = false;
+    clearReq = true;
+  }
+  interrupts();
+
+  if (clearReq) {
+    delay(40);
+    if (digitalRead(PIN_CLEAR_EPD) == HIGH) {
+      paint.Clear(UNCOLORED);
+      epd.Display_Fast(image);
+      Serial.println("EPD cleared (GPIO6)");
+    }
+  }
+
   Dir hit = DIR_NONE;
   noInterrupts();
   if (gPendingDir != DIR_NONE) {
