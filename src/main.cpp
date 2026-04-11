@@ -1,40 +1,51 @@
 #include <Arduino.h>
-#include <Goldelox_Serial_4DLib.h>
-#include <Goldelox_Const4D.h>
+#include <SPI.h>
+#include <math.h>
+#include "epd2in13_V4.h"
+#include "epdpaint.h"
+#include "star.h"
 
-// uLCD-144G2 (Goldelox SPE / serial): host UART on GPIO17 (RX) / GPIO16 (TX).
-// Wire: ESP32 TX (16) -> display RX, ESP32 RX (17) -> display TX, common GND.
-// Display must be programmed for Serial (SPE) in Workshop4; default SPE baud is often 9600.
-static constexpr unsigned long kDisplayBaud = 9600;
 
-Goldelox_Serial_4DLib Display(&Serial0);
+// Lafvin / Waveshare 2.13" V4: 250 x 122, 1 bit per pixel (see
+// https://lafvin-213inch-epaper-hat.readthedocs.io/en/latest/about_this_kit.html )
+#define COLORED     0
+#define UNCOLORED   1
 
-static void onDisplayError(int errCode, unsigned char errByte) {
-  Serial.printf("uLCD error: code=%d byte=0x%02x\n", errCode, errByte);
-}
+// Must match Epd::Display(): ceil(EPD_WIDTH/8) * EPD_HEIGHT bytes (4000 for 122x250).
+static constexpr int kImageBytes = ((EPD_WIDTH + 7) / 8) * EPD_HEIGHT;
+
+unsigned char image[kImageBytes];
+Paint paint(image, EPD_WIDTH, EPD_HEIGHT);
+Epd epd;
 
 void setup() {
   Serial.begin(115200);
-  delay(300);
+  delay(500);
 
-  Serial0.begin(kDisplayBaud, SERIAL_8N1, 17, 16);
-  Display.Callback4D = onDisplayError;
-  Display.TimeLimit4D = 5000;
-  delay(800);
+  if (epd.Init(FULL) != 0) {
+    Serial.println("EPD init failed (check RST/DC/CS/BUSY wiring vs epdif.h)");
+    return;
+  }
+  epd.Clear();
+  // Lafvin doc: 0 = black, 1 = white in image data; this driver maps that via
+  // COLORED/UNCOLORED + IF_INVERT_COLOR in epdpaint.h.
+  paint.Clear(UNCOLORED);
+  paint.DrawStringAt(20, 15, "Smart Display", &Font12, COLORED);
+  epd.Display(image);
+  Serial.println("Displayed image");
 
-  Display.gfx_ScreenMode(LANDSCAPE);
-  Display.SSTimeout(0);
-  Display.SSSpeed(0);
-  Display.SSMode(0);
-
-  Display.gfx_Cls();
-  Display.txt_FGcolour(WHITE);
-  Display.txt_BGcolour(BLACK);
-  Display.txt_FontID(0);
-  Display.txt_MoveCursor(1, 1);
-  Display.print("Hello World!");
-
-  Serial.println("Sent \"Hello World!\" to uLCD-144G2");
+  // // put your setup code here, to run once:
+  // Serial.begin(115200);
+  // Serial.println("epd FAST");
+  // epd.Init(FAST);
+  // // epd.Init(FULL);
+  // epd.Display_Fast(star);
+  // // epd.Display1(star);
+  // delay(2000);
 }
 
-void loop() {}
+// start game
+// leaderboard
+void loop() {
+  delay(2000);
+}
