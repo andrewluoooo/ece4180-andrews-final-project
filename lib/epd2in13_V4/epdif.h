@@ -4,11 +4,15 @@
 #include <Arduino.h>
 #include "epd_compat_pgmspace.h"
 
-// Pin definition
-#define RST_PIN         8
-#define DC_PIN          9
-#define CS_PIN          34
-#define BUSY_PIN        7
+// Panel wiring (SPI + control)
+#define EPD_SPI_SCK     23
+#define EPD_SPI_MOSI    15   // DIN
+#define EPD_SPI_MISO    (-1)
+
+#define RST_PIN         20
+#define DC_PIN          21
+#define CS_PIN          22
+#define BUSY_PIN        19
 
 class EpdIf {
 public:

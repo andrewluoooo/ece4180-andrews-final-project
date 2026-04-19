@@ -1,8 +1,5 @@
 #include "epdif.h"
 #include <SPI.h>
-#if defined(ARDUINO_TINYS3)
-#include "pins_arduino.h"
-#endif
 
 EpdIf::EpdIf() {
 };
@@ -34,11 +31,7 @@ int EpdIf::IfInit(void) {
     pinMode(DC_PIN, OUTPUT);
     pinMode(BUSY_PIN, INPUT); 
     
-#if defined(ARDUINO_TINYS3)
-    SPI.begin(SCK, MISO, MOSI, -1);
-#else
-    SPI.begin();
-#endif
+    SPI.begin(EPD_SPI_SCK, EPD_SPI_MISO, EPD_SPI_MOSI, -1);
     SPI.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
     return 0;
 }
