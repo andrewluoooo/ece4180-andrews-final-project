@@ -13,7 +13,7 @@ struct IRBeamBreak {
   const char *name;
 };
  
-#define NUM_BEAMS 6
+#define NUM_BEAMS 7
  
 IRBeamBreak beams[NUM_BEAMS] = {
   { 0, 10, "Beam 1" },
@@ -22,6 +22,7 @@ IRBeamBreak beams[NUM_BEAMS] = {
   { 3, 18, "Beam 4" },
   { 4, 19, "Beam 5" },
   { 6, 20, "Beam 6" },
+  { 5, 21, "Beam 7" },
 };
  
 // ---------------------------------------------------------------------------
@@ -35,7 +36,7 @@ IRBeamBreak beams[NUM_BEAMS] = {
 // ---------------------------------------------------------------------------
 // Buzzer
 // ---------------------------------------------------------------------------
-#define BUZZER_PIN       5
+#define BUZZER_PIN       7
 #define BEEP_FREQ_HZ     1700
 #define BEEP_DURATION_MS 80
  
@@ -57,8 +58,8 @@ IRBeamBreak beams[NUM_BEAMS] = {
 #define SERVO_PWM_RES_BITS 16
 #define SERVO_MIN_US       900
 #define SERVO_MAX_US       2100
-#define SERVO_OPEN_DEG     90      // game-start position
-#define SERVO_CLOSE_DEG    180     // locked/close position
+#define SERVO_OPEN_DEG     180     // game-start position
+#define SERVO_CLOSE_DEG    0       // locked/close position
 #define SERVO_OPEN_MS      10000   // keep open for 10 s after game start
 
 // Game-start byte sent over ESP-NOW (raw, not ASCII "AA")
