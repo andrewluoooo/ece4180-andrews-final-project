@@ -34,7 +34,10 @@
 // ---------------------------------------------------------------------------
 // ESP-NOW
 // ---------------------------------------------------------------------------
-#define ESPNOW_CHANNEL 1
+#define ESPNOW_CHANNEL   1
+#define GAME_START_BYTE  0xAA
+#define GAME_END_BYTE    0xBB
+ 
 static const MacAddress PEER_MAC({0x10, 0x51, 0xDB, 0x01, 0x91, 0xB4});
  
 // ---------------------------------------------------------------------------
@@ -158,6 +161,16 @@ static int pinForDirection(Direction dir) {
     }
 }
  
+// Send a control byte over ESP-NOW, with logging
+static void espNowSend(uint8_t byte) {
+    if (gNowSerial && gNowOk) {
+        gNowSerial->write(byte);
+        Serial.printf("ESP-NOW TX: 0x%02X\n", byte);
+    } else {
+        Serial.printf("ESP-NOW TX skipped (link not ready): 0x%02X\n", byte);
+    }
+}
+ 
 // ---------------------------------------------------------------------------
 // Keyboard layout for name entry
 // ---------------------------------------------------------------------------
@@ -227,6 +240,9 @@ static bool pollEspNow() {
                       gThrowIdx, mask, (unsigned long)pts, p1 ? "P1" : "P2");
  
         if (gThrowIdx >= THROWS_TOTAL) {
+            // Notify the beam board the game is over
+            espNowSend(GAME_END_BYTE);
+ 
             uint32_t total = gScoreP1 + gScoreP2;
             if (total == 0) {
                 gScreen = SCREEN_MAIN_MENU;
@@ -400,12 +416,7 @@ static void handleMainMenu(Direction dir) {
         if (gMenuSel == 1) {
             gScreen = SCREEN_LEADERBOARD;
         } else {
-            if (gNowSerial && gNowOk) {
-                gNowSerial->write((uint8_t)0xAA);
-                Serial.println("ESP-NOW TX: 0xAA (start game)");
-            } else {
-                Serial.println("ESP-NOW TX skipped (link not ready)");
-            }
+            espNowSend(GAME_START_BYTE);
             gScreen   = SCREEN_GAME;
             gScoreP1  = 0;
             gScoreP2  = 0;
@@ -599,4 +610,3 @@ void loop() {
  
     delay(5);
 }
- 
