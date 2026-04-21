@@ -9,48 +9,30 @@
 #include "epdpaint.h"
 #include "leaderboard.h"
  
-// ---------------------------------------------------------------------------
-// Display constants
-// Waveshare 2.13" V4: 250 x 122, 1-bit per pixel
-// ---------------------------------------------------------------------------
 #define COLORED   0
 #define UNCOLORED 1
  
-// ---------------------------------------------------------------------------
-// Five-way joystick pins (active LOW, INPUT_PULLUP)
-// ---------------------------------------------------------------------------
 #define PIN_UP     5
 #define PIN_CENTER 4
 #define PIN_LEFT   3
 #define PIN_DOWN   2
 #define PIN_RIGHT  1
  
-// Clear button: momentary to 3.3V (active HIGH, INPUT_PULLDOWN)
 #define PIN_CLEAR_EPD 6
  
-// Minimum ms between accepted navigation presses (lets the display finish updating)
 #define NAV_MIN_INTERVAL_MS 450
  
-// ---------------------------------------------------------------------------
-// ESP-NOW
-// ---------------------------------------------------------------------------
 #define ESPNOW_CHANNEL   1
 #define GAME_START_BYTE  0xAA
 #define GAME_END_BYTE    0xBB
  
 static const MacAddress PEER_MAC({0x10, 0x51, 0xDB, 0x01, 0x91, 0xB4});
  
-// ---------------------------------------------------------------------------
-// Game rules
-// ---------------------------------------------------------------------------
 #define THROWS_TOTAL 10   // 5 throws per player, alternating P1/P2
  
 // Points awarded per beam (index 0..6 maps to bits 0..6 of the beam mask)
 static const uint16_t BEAM_POINTS[7] = {10, 20, 30, 40, 50, 100, 100};
  
-// ---------------------------------------------------------------------------
-// Direction enum for the joystick
-// ---------------------------------------------------------------------------
 enum Direction {
     DIR_NONE   = 0xFF,
     DIR_UP     = 0,
@@ -60,9 +42,6 @@ enum Direction {
     DIR_RIGHT  = 4
 };
  
-// ---------------------------------------------------------------------------
-// Application screens
-// ---------------------------------------------------------------------------
 enum AppScreen {
     SCREEN_MAIN_MENU,
     SCREEN_LEADERBOARD,
@@ -71,18 +50,12 @@ enum AppScreen {
     SCREEN_NAME_ENTRY
 };
  
-// ---------------------------------------------------------------------------
-// Round outcomes
-// ---------------------------------------------------------------------------
 enum RoundOutcome {
     OUTCOME_P1_WINS,
     OUTCOME_P2_WINS,
     OUTCOME_TIE
 };
  
-// ---------------------------------------------------------------------------
-// Global state
-// ---------------------------------------------------------------------------
 static volatile Direction gPendingDir   = DIR_NONE;
 static volatile bool      gClearPending = false;
  
@@ -112,10 +85,8 @@ static const int IMAGE_BYTES = ((EPD_WIDTH + 7) / 8) * EPD_HEIGHT;
 static unsigned char image[IMAGE_BYTES];
 static Paint paint(image, EPD_WIDTH, EPD_HEIGHT);
 static Epd   epd;
- 
-// ---------------------------------------------------------------------------
-// ISRs - keep them minimal
-// ---------------------------------------------------------------------------
+
+// joystick interrupts
 void IRAM_ATTR isrUp()     { gPendingDir = DIR_UP;     }
 void IRAM_ATTR isrCenter() { gPendingDir = DIR_CENTER;  }
 void IRAM_ATTR isrLeft()   { gPendingDir = DIR_LEFT;    }
@@ -123,25 +94,15 @@ void IRAM_ATTR isrDown()   { gPendingDir = DIR_DOWN;    }
 void IRAM_ATTR isrRight()  { gPendingDir = DIR_RIGHT;   }
 void IRAM_ATTR isrClear()  { gClearPending = true;      }
  
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
  
-// Draw text twice offset by 1 pixel to fake bold (the font library has no bold)
+// draw text twice offset by 1 pixel to fake bold (this is because the font library has no bold)
 static void drawBold(Paint &p, int x, int y, const char *s, sFONT *font, int color) {
     p.DrawStringAt(x,     y, s, font, color);
     p.DrawStringAt(x + 1, y, s, font, color);
 }
  
-// Returns true if exactly one bit in 0..6 is set (valid one-hot beam mask)
-static bool isOneHot(uint8_t mask) {
-    uint8_t m = mask & 0x7F;
-    return (m != 0) && ((m & (m - 1)) == 0);
-}
- 
 // Convert a one-hot beam mask to a point value; returns 0 for invalid masks
 static uint32_t maskToPoints(uint8_t mask) {
-    if (!isOneHot(mask)) return 0;
     uint8_t m = mask & 0x7F;
     for (int i = 0; i < 7; i++) {
         if (m & (1u << i)) return BEAM_POINTS[i];
@@ -198,9 +159,6 @@ static void kbClampCol() {
     if (gKbCol < 0)      gKbCol = 0;
 }
  
-// ---------------------------------------------------------------------------
-// ESP-NOW setup
-// ---------------------------------------------------------------------------
 static void setupEspNow() {
     WiFi.mode(WIFI_STA);
     WiFi.setChannel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
@@ -211,10 +169,6 @@ static void setupEspNow() {
     Serial.printf("ESP-NOW ch %d: %s\n", ESPNOW_CHANNEL, gNowOk ? "OK" : "FAIL");
 }
  
-// ---------------------------------------------------------------------------
-// ESP-NOW polling (called every loop while in game)
-// Returns true if game state changed and display needs a redraw
-// ---------------------------------------------------------------------------
 static bool pollEspNow() {
     if (!gNowSerial || !gNowOk)    return false;
     if (gScreen != SCREEN_GAME)    return false;
@@ -497,9 +451,6 @@ static void handleNameEntry(Direction dir) {
     }
 }
  
-// ---------------------------------------------------------------------------
-// setup
-// ---------------------------------------------------------------------------
 void setup() {
     Serial.begin(115200);
     delay(500);
@@ -528,15 +479,9 @@ void setup() {
     Serial.println("Ready.");
 }
  
-// ---------------------------------------------------------------------------
-// loop
-// ---------------------------------------------------------------------------
 void loop() {
-    // --- Handle clear-button press ---
     bool clearReq = false;
-    noInterrupts();
     if (gClearPending) { gClearPending = false; clearReq = true; }
-    interrupts();
  
     if (clearReq) {
         delay(40);
@@ -556,9 +501,7 @@ void loop() {
  
     // --- Read joystick direction ---
     Direction dir = DIR_NONE;
-    noInterrupts();
     if (gPendingDir != DIR_NONE) { dir = gPendingDir; gPendingDir = DIR_NONE; }
-    interrupts();
  
     // Nothing to do this iteration
     if (dir == DIR_NONE && !espNowDirty) { delay(5); return; }
@@ -571,7 +514,7 @@ void loop() {
         // Rate-limit navigation so display has time to update
         uint32_t now = millis();
         if (gLastNavMs != 0 && (now - gLastNavMs) < NAV_MIN_INTERVAL_MS) {
-            noInterrupts(); gPendingDir = dir; interrupts();
+            gPendingDir = dir;
             delay(5);
             return;
         }
