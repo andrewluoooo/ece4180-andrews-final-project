@@ -19,6 +19,12 @@
 #define PIN_RIGHT  1
  
 #define PIN_CLEAR_EPD 6
+#define PIN_MUSIC_TOGGLE 7
+#define SPEAKER_VOICE_1_PIN 0
+#define SPEAKER_VOICE_2_PIN 10
+#define SPEAKER_VOICE_3_PIN 11
+#define SPEAKER_PWM_INIT_FREQ_HZ 440
+#define SPEAKER_PWM_RES_BITS 8
  
 #define NAV_MIN_INTERVAL_MS 450
  
@@ -85,6 +91,104 @@ static const int IMAGE_BYTES = ((EPD_WIDTH + 7) / 8) * EPD_HEIGHT;
 static unsigned char image[IMAGE_BYTES];
 static Paint paint(image, EPD_WIDTH, EPD_HEIGHT);
 static Epd   epd;
+
+struct MenuSongStep {
+    uint16_t melodyHz;   // speaker 1
+    uint16_t middleHz;   // speaker 2
+    uint16_t bassHz;     // speaker 3
+    uint16_t durMs;
+};
+
+// 16-slice loop based on the provided measures 9-12 table.
+// For stacked middle notes (e.g. E4 + G#4), this uses the first note listed.
+static const MenuSongStep kMenuSong[] = {
+    {830, 660, 130, 260},  // 1
+    {830, 554, 130, 260},  // 2 (melody hold, bass hold)
+    {  0, 660, 208, 260},  // 3 (melody rest)
+    {740, 554, 208, 260},  // 4 (bass hold)
+    {660, 660, 164, 260},  // 5
+    {660, 494, 164, 260},  // 6 (melody hold, bass hold)
+    {660, 660, 248, 260},  // 7
+    {740, 494, 248, 260},  // 8 (bass hold)
+    {830, 622, 124, 260},  // 9
+    {740, 494, 124, 260},  // 10 (bass hold)
+    {660, 622, 186, 260},  // 11
+    {660, 494, 186, 260},  // 12 (melody hold, bass hold)
+    {830, 660, 130, 260},  // 13
+    {988, 554, 130, 260},  // 14 (bass hold)
+    {830, 660, 208, 260},  // 15
+    {830, 554, 208, 260},  // 16 (melody hold, bass hold)
+};
+static const size_t kMenuSongLen = sizeof(kMenuSong) / sizeof(kMenuSong[0]);
+static size_t gSongStep = 0;
+static uint32_t gSongNextMs = 0;
+static bool gSongWasInMenu = false;
+static bool gMusicPaused = false;
+static bool gMusicBtnLastDown = false;
+static uint32_t gMusicBtnLastEdgeMs = 0;
+
+static void setVoiceFreq(uint8_t pin, uint16_t hz) {
+    if (hz == 0) ledcWriteTone(pin, 0);
+    else         ledcWriteTone(pin, hz);
+}
+
+static void stopMenuSong() {
+    setVoiceFreq(SPEAKER_VOICE_1_PIN, 0);
+    setVoiceFreq(SPEAKER_VOICE_2_PIN, 0);
+    setVoiceFreq(SPEAKER_VOICE_3_PIN, 0);
+}
+
+static void updateMenuSong() {
+    if (gMusicPaused) {
+        stopMenuSong();
+        return;
+    }
+
+    const bool inMenu = (gScreen == SCREEN_MAIN_MENU);
+    if (!inMenu) {
+        if (gSongWasInMenu) {
+            stopMenuSong();
+            gSongWasInMenu = false;
+        }
+        return;
+    }
+
+    if (!gSongWasInMenu) {
+        gSongStep = 0;
+        gSongNextMs = 0;
+        gSongWasInMenu = true;
+    }
+
+    const int32_t dt = (int32_t)(millis() - gSongNextMs);
+    if (gSongNextMs == 0 || dt >= 0) {
+        const MenuSongStep &s = kMenuSong[gSongStep];
+        setVoiceFreq(SPEAKER_VOICE_1_PIN, s.melodyHz);
+        setVoiceFreq(SPEAKER_VOICE_2_PIN, s.middleHz);
+        setVoiceFreq(SPEAKER_VOICE_3_PIN, s.bassHz);
+        gSongNextMs = millis() + s.durMs;
+        gSongStep = (gSongStep + 1) % kMenuSongLen;
+    }
+}
+
+static void handleMusicToggleButton() {
+    const bool down = (digitalRead(PIN_MUSIC_TOGGLE) == LOW);
+    const uint32_t now = millis();
+
+    if (down != gMusicBtnLastDown && (now - gMusicBtnLastEdgeMs) > 35) {
+        gMusicBtnLastEdgeMs = now;
+        gMusicBtnLastDown = down;
+        if (down) {
+            gMusicPaused = !gMusicPaused;
+            if (!gMusicPaused) {
+                gSongNextMs = 0;
+                gSongWasInMenu = false;
+            } else {
+                stopMenuSong();
+            }
+            Serial.printf("Music %s (GPIO7)\n", gMusicPaused ? "paused" : "playing");
+        }
+    }
+}
 
 // joystick interrupts
 void IRAM_ATTR isrUp()     { gPendingDir = DIR_UP;     }
@@ -474,12 +578,27 @@ void setup() {
     // Clear button: active HIGH
     pinMode(PIN_CLEAR_EPD, INPUT_PULLDOWN);
     attachInterrupt(digitalPinToInterrupt(PIN_CLEAR_EPD), isrClear, RISING);
+    pinMode(PIN_MUSIC_TOGGLE, INPUT_PULLUP);
  
     setupEspNow();
+
+    if (!ledcAttach(SPEAKER_VOICE_1_PIN, SPEAKER_PWM_INIT_FREQ_HZ, SPEAKER_PWM_RES_BITS)) {
+        Serial.println("ledcAttach voice1 failed");
+    }
+    if (!ledcAttach(SPEAKER_VOICE_2_PIN, SPEAKER_PWM_INIT_FREQ_HZ, SPEAKER_PWM_RES_BITS)) {
+        Serial.println("ledcAttach voice2 failed");
+    }
+    if (!ledcAttach(SPEAKER_VOICE_3_PIN, SPEAKER_PWM_INIT_FREQ_HZ, SPEAKER_PWM_RES_BITS)) {
+        Serial.println("ledcAttach voice3 failed");
+    }
+    stopMenuSong();
     Serial.println("Ready.");
 }
  
 void loop() {
+    handleMusicToggleButton();
+    updateMenuSong();
+
     bool clearReq = false;
     if (gClearPending) { gClearPending = false; clearReq = true; }
  
