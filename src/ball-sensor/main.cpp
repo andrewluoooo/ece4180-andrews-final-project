@@ -30,7 +30,7 @@ IRBeamBreak beams[NUM_BEAMS] = {
 // ---------------------------------------------------------------------------
 #define VOLTAGE_THRESHOLD 2.0f
 #define THRESHOLD_COUNTS  ((uint16_t)(VOLTAGE_THRESHOLD * 4095.0f / 3.3f))
-#define PILL_COOLDOWN_MS  100
+#define BALL_COOLDOWN_MS  100
 #define DETECT_PERIOD_US  1000
  
 // ---------------------------------------------------------------------------
@@ -185,8 +185,8 @@ ESP_NOW_Serial_Class NowSerial(peer_mac, ESPNOW_WIFI_CHANNEL, WIFI_IF_STA);
 // Shared state
 // ---------------------------------------------------------------------------
 uint16_t latestSample[NUM_BEAMS]        = { 0 };
-bool     pillCurrentlyInBeam[NUM_BEAMS] = { false };
-uint32_t pillCooldownTimer[NUM_BEAMS]   = { 0 };
+bool     ballCurrentlyInBeam[NUM_BEAMS] = { false };
+uint32_t ballCooldownTimer[NUM_BEAMS]   = { 0 };
 uint8_t  pendingDetectionMask           = 0;
  
 hw_timer_t *detectTimer = NULL;
@@ -200,16 +200,16 @@ void IRAM_ATTR onDetectTimerISR() {
   for (int i = 0; i < NUM_BEAMS; i++) {
     bool isBlocking = (latestSample[i] < THRESHOLD_COUNTS);
  
-    if (isBlocking && !pillCurrentlyInBeam[i]) {
-      if (nowMs - pillCooldownTimer[i] > PILL_COOLDOWN_MS) {
-        pillCurrentlyInBeam[i] = true;
-        pillCooldownTimer[i]   = nowMs;
+    if (isBlocking && !ballCurrentlyInBeam[i]) {
+      if (nowMs - ballCooldownTimer[i] > BALL_COOLDOWN_MS) {
+        ballCurrentlyInBeam[i] = true;
+        ballCooldownTimer[i]   = nowMs;
         pendingDetectionMask  |= (1 << i);
       }
     }
  
-    if (!isBlocking && pillCurrentlyInBeam[i]) {
-      pillCurrentlyInBeam[i] = false;
+    if (!isBlocking && ballCurrentlyInBeam[i]) {
+      ballCurrentlyInBeam[i] = false;
     }
   }
 }
